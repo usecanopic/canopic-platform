@@ -7,6 +7,8 @@ import type {
   Profile,
   VaultSnapshotRow,
   VenueMarketRow,
+  WalletBalanceRow,
+  WalletVaultPositionRow,
 } from "./types";
 
 /**
@@ -59,6 +61,24 @@ export async function getWalletFills(db: PlatformClient, wallet: string, limit =
       .ilike("trader_address", wallet)
       .order("executed_at", { ascending: false })
       .limit(limit),
+    []
+  );
+}
+
+export async function getWalletBalances(db: PlatformClient, chainId: number, wallet: string): Promise<WalletBalanceRow[]> {
+  return unwrap(await db.from("wallet_balances").select("*").eq("chain_id", chainId).ilike("wallet_address", wallet), []);
+}
+
+/** A vault position combined with its market's symbol. */
+export type WalletVaultRow = WalletVaultPositionRow & { markets: Pick<VenueMarketRow, "symbol"> | null };
+
+export async function getWalletVaultPositions(db: PlatformClient, wallet: string): Promise<WalletVaultRow[]> {
+  return unwrap(
+    await db
+      .from("wallet_vault_positions")
+      .select("*, markets(symbol)")
+      .ilike("wallet_address", wallet)
+      .order("value", { ascending: false }),
     []
   );
 }

@@ -89,6 +89,25 @@ export interface FillRow {
   executed_at: string;
 }
 
+export interface WalletBalanceRow {
+  id: number;
+  chain_id: number;
+  wallet_address: string;
+  symbol: string;
+  balance: string;
+  observed_at: string;
+}
+
+export interface WalletVaultPositionRow {
+  id: number;
+  market_id: string;
+  wallet_address: string;
+  shares: string;
+  value: string;
+  spread_earned: string;
+  observed_at: string;
+}
+
 export interface GovernanceRow {
   id: number;
   action: string;

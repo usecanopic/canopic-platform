@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeftRight, ArrowRight, BadgeCheck, Layers, Percent, ReceiptText, Wallet } from "lucide-react";
 import { useSession } from "@/components/platform/PlatformProviders";
 import { RequireAuth } from "@/components/platform/PlatformShell";
-import { useAsync, useNow } from "@/components/platform/usePlatformData";
+import { useAsync, useNow, useVenue } from "@/components/platform/usePlatformData";
 import {
   Badge,
   EmptyState,
@@ -20,8 +20,8 @@ import {
   Td,
   Th,
 } from "@/components/platform/ui";
-import { getMyAttestations, getWalletFills } from "@/lib/platform/queries";
-import { fmtAgo, fmtBps, fmtCompact, fmtDate, shortAddress } from "@/lib/platform/format";
+import { getMyAttestations, getWalletBalances, getWalletFills, getWalletVaultPositions } from "@/lib/platform/queries";
+import { fmtAgo, fmtBps, fmtCompact, fmtDate, fmtMoney, shortAddress } from "@/lib/platform/format";
 import { QUOTE_SYMBOL, marketBySymbol } from "@/lib/platform/markets";
 import { platformEnv } from "@/lib/platform/env";
 import { cn } from "@/lib/utils";
@@ -66,7 +66,16 @@ function Portfolio() {
     () => (walletAddress ? getWalletFills(db, walletAddress) : Promise.resolve([])),
     [db, walletAddress]
   );
+  const balances = useAsync(
+    () => (walletAddress ? getWalletBalances(db, platformEnv.chainId, walletAddress) : Promise.resolve([])),
+    [db, walletAddress]
+  );
+  const vaultPositions = useAsync(
+    () => (walletAddress ? getWalletVaultPositions(db, walletAddress) : Promise.resolve([])),
+    [db, walletAddress]
+  );
   const attestations = useAsync(() => getMyAttestations(api), [api, userId]);
+  const venue = useVenue();
   const now = useNow();
   const [side, setSide] = useState<SideFilter>("all");
 
@@ -81,6 +90,30 @@ function Portfolio() {
   }));
   const activeCount = activeRoles.filter((r) => r.attestation).length;
 
+  const marketRows = useMemo(
+    () => Object.fromEntries((venue.data?.markets ?? []).map((m) => [m.symbol, m])),
+    [venue.data]
+  );
+
+  // Valued at the same mids the vaults quote from. USDG is the quote token, so it is worth 1 by definition.
+  const balanceRows = useMemo(
+    () =>
+      (balances.data ?? [])
+        .map((b) => {
+          const amount = Number(b.balance);
+          const price = b.symbol === QUOTE_SYMBOL ? 1 : marketRows[b.symbol]?.mid;
+          return { ...b, amount, value: price === undefined ? null : amount * price };
+        })
+        .sort((a, b) => (b.value ?? 0) - (a.value ?? 0)),
+    [balances.data, marketRows]
+  );
+  const balancesTotal = balanceRows.reduce((sum, b) => sum + (b.value ?? 0), 0);
+
+  const positionRows = useMemo(() => vaultPositions.data ?? [], [vaultPositions.data]);
+  const positionsTotal = positionRows.reduce((sum, p) => sum + Number(p.value), 0);
+
+  const balancesReady = !(balances.loading && !balances.data) && !(venue.loading && !venue.data);
+  const positionsReady = !(vaultPositions.loading && !vaultPositions.data) && !(venue.loading && !venue.data);
   const fillsReady = !(fills.loading && !fills.data);
   const attestationsReady = !(attestations.loading && !attestations.data);
   const totalNotional = fillRows.reduce((s, f) => s + (Number(f.notional) || 0), 0);
@@ -92,12 +125,12 @@ function Portfolio() {
   return (
     <div className="space-y-6">
       <Notice>
-        You are using <span className="font-mono">{shortAddress(walletAddress)}</span>. The indexer does not track
-        balances yet while the launch is guarded, so check the chain itself for those. Lower on this page, trades
-        and role status are pulled from the public index the venue publishes.
+        You are using <span className="font-mono">{shortAddress(walletAddress)}</span>. Balances, vault shares, trades
+        and role status are pulled from the public index the venue publishes. If it ever disagrees with the chain,
+        the chain is right.
       </Notice>
 
-      {/* KPIs: only figures the read model actually returns. Holdings value and LP positions wait for the indexer. */}
+      {/* KPIs: only figures the read model actually returns. */}
       {fillsReady && attestationsReady ? (
         <StatBand>
           <StatCard
@@ -133,26 +166,112 @@ function Portfolio() {
       )}
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
-        <Sheet label="Balances" meta="tokens and vault shares">
-          <EmptyState
-            icon={<Wallet />}
-            title="The indexer is not tracking balances yet"
-            body="This panel fills itself in once the indexer starts tracking balances. Trades you make settle on-chain straight away in the meantime."
-            action={<SwapCta />}
-          />
+        <Sheet
+          label="Balances"
+          meta={balanceRows.length > 0 ? `${fmtMoney(balancesTotal)} ${QUOTE_SYMBOL}` : "tokens and stablecoins"}
+        >
+          {!balancesReady ? (
+            <Skeleton rows={4} />
+          ) : balances.error ? (
+            <Notice tone="error">{balances.error}</Notice>
+          ) : balanceRows.length === 0 ? (
+            <EmptyState
+              icon={<Wallet />}
+              title="Nothing in this wallet yet"
+              body="Tokens and USDG held by this address will be listed here. Trades you make settle on-chain straight away."
+              action={<SwapCta />}
+            />
+          ) : (
+            <Table minWidth={400}>
+              <thead>
+                <tr>
+                  <Th>Asset</Th>
+                  <Th className="text-right">Amount</Th>
+                  <Th className="text-right">Value ({QUOTE_SYMBOL})</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {balanceRows.map((b) => (
+                  <tr key={b.id}>
+                    <Td>
+                      <span className="flex items-center gap-3">
+                        <TokenLogo symbol={b.symbol} size={32} />
+                        <span className="min-w-0">
+                          <span className="block font-medium text-cp-ink">{b.symbol}</span>
+                          <span className="block truncate text-[12.5px] text-cp-ink-4">
+                            {b.symbol === QUOTE_SYMBOL ? "Quote token" : marketBySymbol[b.symbol]?.name}
+                          </span>
+                        </span>
+                      </span>
+                    </Td>
+                    <Td className="text-right text-cp-ink-2">
+                      {fmtMoney(b.amount, "", b.symbol === QUOTE_SYMBOL ? 2 : 4)}
+                    </Td>
+                    <Td className="text-right text-cp-ink">{b.value === null ? "n/a" : fmtMoney(b.value)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
         </Sheet>
 
-        <Sheet label="Vault shares" meta="value and spread earned">
-          <EmptyState
-            icon={<Layers />}
-            title="No vault shares in this wallet"
-            body="Deposit through the Vaults page to start collecting spread. Shares can only move between attested LPs, and you can always take yours out."
-            action={
-              <Link href="/platform/liquidity" className="btn btn-secondary btn-sm">
-                Browse vaults
-              </Link>
-            }
-          />
+        <Sheet
+          label="Vault shares"
+          meta={positionRows.length > 0 ? `${fmtMoney(positionsTotal)} ${QUOTE_SYMBOL}` : "value and spread earned"}
+        >
+          {!positionsReady ? (
+            <Skeleton rows={4} />
+          ) : vaultPositions.error ? (
+            <Notice tone="error">{vaultPositions.error}</Notice>
+          ) : positionRows.length === 0 ? (
+            <EmptyState
+              icon={<Layers />}
+              title="No vault shares in this wallet"
+              body="Deposit through the Vaults page to start collecting spread. Shares can only move between attested LPs, and you can always take yours out."
+              action={
+                <Link href="/platform/liquidity" className="btn btn-secondary btn-sm">
+                  Browse vaults
+                </Link>
+              }
+            />
+          ) : (
+            <Table minWidth={460}>
+              <thead>
+                <tr>
+                  <Th>Vault</Th>
+                  <Th className="text-right">Value ({QUOTE_SYMBOL})</Th>
+                  <Th className="text-right">Share of vault</Th>
+                  <Th className="text-right">Spread earned</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {positionRows.map((p) => {
+                  const sym = p.markets?.symbol ?? "?";
+                  const tvl = marketRows[sym]?.tvl ?? 0;
+                  return (
+                    <tr key={p.id}>
+                      <Td>
+                        <span className="flex items-center gap-3">
+                          <TokenLogo symbol={sym} size={32} />
+                          <span className="min-w-0">
+                            <span className="block font-medium text-cp-ink">{sym}</span>
+                            <span className="block truncate text-[12.5px] text-cp-ink-4">
+                              {fmtMoney(p.shares)} shares
+                            </span>
+                          </span>
+                        </span>
+                      </Td>
+                      <Td className="text-right text-cp-ink">{fmtMoney(p.value)}</Td>
+                      <Td className="text-right text-cp-ink-2">
+                        {tvl > 0 ? `${((Number(p.value) / tvl) * 100).toFixed(1)}%` : "n/a"}
+                      </Td>
+                      <Td className="text-right text-cp-up">{fmtMoney(p.spread_earned)}</Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          )}
         </Sheet>
       </div>
 
