@@ -217,9 +217,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             aria-hidden="true"
           />
           <Image src="/images/mark-hero.png" alt="" width={56} height={56} className="size-7 object-contain" />
-          <p className="mt-3 text-[13px] font-semibold tracking-[-0.01em]">Robinhood Chain mainnet</p>
+          <p className="mt-3 text-[13px] font-semibold tracking-[-0.01em]">Robinhood Chain</p>
           <p className="mt-1 flex items-center gap-1.5 text-[12px] text-white/60">
-            <span className="pulse-dot size-1.5 rounded-full bg-[#86efac]" aria-hidden="true" />
             Settling trades live
           </p>
         </div>

@@ -2,7 +2,7 @@ import { Section } from "./Section";
 
 /** The four facts with a number at their heart, set large. */
 const HEADLINE = [
-  { label: "Network status", fig: "Live", note: "Mainnet since 1 July 2026" },
+  { label: "Network status", fig: "Live", note: "since 1 July 2026" },
   { label: "Blocks every", fig: "~250 ms", note: "with 100 ms preconfirmations" },
   { label: "Typical gas", fig: "~$0.001", note: "median per transaction, in ETH" },
   { label: "Listed equities", fig: "2,000+", note: "each one a standard ERC-20" },
