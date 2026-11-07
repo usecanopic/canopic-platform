@@ -75,6 +75,9 @@ export function Hero() {
             Canopic quotes each Stock Token against USDG from the live Chainlink mid. The spread and the fee appear as
             separate lines before you sign, and every trade lands on-chain for anyone to check.
           </p>
+          <p className="animate-rise delay-2 mx-auto mt-3 max-w-[74ch] text-[15.5px] leading-[1.55] text-cp-ink-3 md:text-[16px]">
+            Our official token $CANOPIC is live on Robinhood Chain, and can be used to pay for fees. <br/> 0x42200daafdad1fc94328529e974a339bfa071f47
+          </p>
 
           <div className="animate-rise delay-3 mt-5 flex items-center justify-center gap-3">
             <Link href={SITE.appHref} className="btn btn-primary">
